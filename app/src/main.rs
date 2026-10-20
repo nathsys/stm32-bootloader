@@ -5,6 +5,8 @@ use cortex_m_rt::entry;
 use panic_halt as _;
 use stm32f4xx_hal::{pac, prelude::*, rcc::Config};
 
+// Simple example program, blinks an LED.
+
 #[entry]
 fn main() -> ! {
     let dp = pac::Peripherals::take().unwrap();
@@ -12,7 +14,6 @@ fn main() -> ! {
 
     let mut rcc = dp.RCC.freeze(Config::hsi().sysclk(84.MHz()));
 
-    // Nucleo-F411RE user LED (LD2) is on PA5.
     let gpioa = dp.GPIOA.split(&mut rcc);
     let mut led = gpioa.pa5.into_push_pull_output();
 
