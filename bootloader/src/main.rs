@@ -8,6 +8,9 @@ use stm32f4xx_hal::serial::config::Config as SerialConfig;
 use stm32f4xx_hal::serial::{Rx, Tx};
 use stm32f4xx_hal::{pac, prelude::*, rcc::Config};
 
+mod crc;
+mod frame;
+
 const BAUD_RATE: u32 = 115200;
 
 const RAM_START: u32 = 0x2000_0000;
@@ -58,7 +61,7 @@ fn validate_and_launch_app(app: &AppSlot) {
 }
 
 /// Uart loop that waits to receiva an application to write to memory.
-fn open_uart(tx: &mut Tx<pac::USART2, u8>, rx: &mut Rx<pac::USART2, u8>) -> ! {
+fn uart(tx: &mut Tx<pac::USART2, u8>, rx: &mut Rx<pac::USART2, u8>) -> ! {
     loop {
         if let Ok(byte) = rx.read() {
             tx.bwrite_all(&[byte]).ok();
@@ -94,18 +97,18 @@ fn main() -> ! {
     let config = SerialConfig::default().baudrate(BAUD_RATE.bps());
     let serial = dp.USART2.serial::<u8>((tx, rx), config, &mut rcc).unwrap();
     let (mut tx_half, mut rx_half) = serial.split();
-    open_uart(&mut tx_half, &mut rx_half);
+    uart(&mut tx_half, &mut rx_half);
 
     // Program only reaches this loop if something went wrong, unique flash pattern to indicate error state. 2 fast blinks, then 1 second off.
-    loop {
-        led.toggle();
-        delay.delay_ms(100);
-        led.toggle();
-        delay.delay_ms(100);
-        led.toggle();
-        delay.delay_ms(100);
-        led.toggle();
+    // loop {
+    //     led.toggle();
+    //     delay.delay_ms(100);
+    //     led.toggle();
+    //     delay.delay_ms(100);
+    //     led.toggle();
+    //     delay.delay_ms(100);
+    //     led.toggle();
 
-        delay.delay_ms(1000);
-    }
+    //     delay.delay_ms(1000);
+    // }
 }
