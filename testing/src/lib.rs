@@ -1,12 +1,17 @@
 // Compile the bootloader's real source files, not copies of them.
 #[path = "../../bootloader/src/crc.rs"]
 pub mod crc;
+
 #[path = "../../bootloader/src/frame.rs"]
 pub mod frame;
+
+#[path = "../../bootloader/src/flash_map.rs"]
+pub mod flash_map;
 
 #[cfg(test)]
 mod tests {
     use super::crc::crc32;
+    use super::flash_map::sector_of;
     use super::frame::{FeedResult, FrameParser, START_BYTE};
 
     //  helpers
@@ -135,5 +140,35 @@ mod tests {
         bad[3] ^= 0x01;
         feed_all(&mut p, &bad); // BadCrc
         assert!(p.payload().is_empty());
+    }
+
+    // Flash map
+    #[test]
+    fn sector_boundaries() {
+        assert_eq!(sector_of(0x0800_FFFF), None);
+        assert_eq!(sector_of(0x0801_0000), Some(4));
+        assert_eq!(sector_of(0x0801_FFFF), Some(4));
+        assert_eq!(sector_of(0x0802_0000), Some(5));
+        assert_eq!(sector_of(0x0803_FFFF), Some(5));
+        assert_eq!(sector_of(0x0804_0000), Some(6));
+        assert_eq!(sector_of(0x0806_0000), Some(7));
+        assert_eq!(sector_of(0x0807_FFFF), Some(7));
+        assert_eq!(sector_of(0x0808_0000), None);
+    }
+
+    #[test]
+    fn bootloader_area_and_ram_are_never_mapped() {
+        assert_eq!(sector_of(0x0800_0000), None);
+        assert_eq!(sector_of(0x0800_4000), None);
+        assert_eq!(sector_of(0x2000_0000), None);
+        assert_eq!(sector_of(0), None);
+    }
+
+    #[test]
+    fn twenty_kb_app_spans_two_sectors() {
+        let base = 0x0801_0000u32;
+        let last = base + 20 * 1024 - 1;
+        assert_eq!(sector_of(base), Some(4));
+        assert_eq!(sector_of(last), Some(4));
     }
 }

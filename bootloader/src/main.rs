@@ -12,14 +12,13 @@ use stm32f4xx_hal::{pac, prelude::*, rcc::Config};
 use crate::frame::FrameParser;
 
 mod crc;
+mod flash_map;
 mod frame;
 
 const BAUD_RATE: u32 = 115200;
 
 const RAM_START: u32 = 0x2000_0000;
 const RAM_END: u32 = 0x2002_0000;
-const APP_SPACE_BASE: u32 = 0x0801_0000;
-const APP_SPACE_END: u32 = 0x0808_0000;
 
 const ACK: u8 = 0x06;
 const NACK: u8 = 0x15;
@@ -66,16 +65,18 @@ fn validate_and_launch_app(app: &AppSlot) {
     }
 }
 
-/// Uart loop that waits to receiva an application to write to memory.
-fn uart(tx: &mut Tx<pac::USART2, u8>, rx: &mut Rx<pac::USART2, u8>) -> ! {
+/// Uart loop that waits to receive frames from host.
+fn uart_rc_frames(tx: &mut Tx<pac::USART2, u8>, rx: &mut Rx<pac::USART2, u8>) -> ! {
     let mut frame_parser = FrameParser::new();
     loop {
         if let Ok(byte) = rx.read() {
             match frame_parser.feed(byte) {
                 FeedResult::Frame(_) => {
+                    // Frame was OK.
                     tx.bwrite_all(&[ACK]).ok();
                 }
                 FeedResult::BadLength | FeedResult::BadCrc => {
+                    // Something went wrong.
                     tx.bwrite_all(&[NACK]).ok();
                 }
                 FeedResult::Pending => {}
@@ -113,5 +114,5 @@ fn main() -> ! {
     let serial = dp.USART2.serial::<u8>((tx, rx), config, &mut rcc).unwrap();
     let (mut tx_half, mut rx_half) = serial.split();
     led.toggle();
-    uart(&mut tx_half, &mut rx_half);
+    uart_rc_frames(&mut tx_half, &mut rx_half);
 }
