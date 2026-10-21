@@ -3,10 +3,13 @@
 
 use cortex_m::asm::bootstrap;
 use cortex_m_rt::entry;
+use frame::FeedResult;
 use panic_halt as _;
 use stm32f4xx_hal::serial::config::Config as SerialConfig;
 use stm32f4xx_hal::serial::{Rx, Tx};
 use stm32f4xx_hal::{pac, prelude::*, rcc::Config};
+
+use crate::frame::FrameParser;
 
 mod crc;
 mod frame;
@@ -17,6 +20,9 @@ const RAM_START: u32 = 0x2000_0000;
 const RAM_END: u32 = 0x2002_0000;
 const APP_SPACE_BASE: u32 = 0x0801_0000;
 const APP_SPACE_END: u32 = 0x0808_0000;
+
+const ACK: u8 = 0x06;
+const NACK: u8 = 0x15;
 
 struct AppSlot {
     base: u32,
@@ -62,9 +68,18 @@ fn validate_and_launch_app(app: &AppSlot) {
 
 /// Uart loop that waits to receiva an application to write to memory.
 fn uart(tx: &mut Tx<pac::USART2, u8>, rx: &mut Rx<pac::USART2, u8>) -> ! {
+    let mut frame_parser = FrameParser::new();
     loop {
         if let Ok(byte) = rx.read() {
-            tx.bwrite_all(&[byte]).ok();
+            match frame_parser.feed(byte) {
+                FeedResult::Frame(_) => {
+                    tx.bwrite_all(&[ACK]).ok();
+                }
+                FeedResult::BadLength | FeedResult::BadCrc => {
+                    tx.bwrite_all(&[NACK]).ok();
+                }
+                FeedResult::Pending => {}
+            }
         }
     }
 }
@@ -97,18 +112,6 @@ fn main() -> ! {
     let config = SerialConfig::default().baudrate(BAUD_RATE.bps());
     let serial = dp.USART2.serial::<u8>((tx, rx), config, &mut rcc).unwrap();
     let (mut tx_half, mut rx_half) = serial.split();
+    led.toggle();
     uart(&mut tx_half, &mut rx_half);
-
-    // Program only reaches this loop if something went wrong, unique flash pattern to indicate error state. 2 fast blinks, then 1 second off.
-    // loop {
-    //     led.toggle();
-    //     delay.delay_ms(100);
-    //     led.toggle();
-    //     delay.delay_ms(100);
-    //     led.toggle();
-    //     delay.delay_ms(100);
-    //     led.toggle();
-
-    //     delay.delay_ms(1000);
-    // }
 }
