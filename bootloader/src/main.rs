@@ -4,40 +4,65 @@
 use cortex_m::asm::bootstrap;
 use cortex_m_rt::entry;
 use panic_halt as _;
+use stm32f4xx_hal::serial::config::Config as SerialConfig;
+use stm32f4xx_hal::serial::{Rx, Tx};
 use stm32f4xx_hal::{pac, prelude::*, rcc::Config};
+
+const BAUD_RATE: u32 = 115200;
+
+const RAM_START: u32 = 0x2000_0000;
+const RAM_END: u32 = 0x2002_0000;
+const APP_SPACE_BASE: u32 = 0x0801_0000;
+const APP_SPACE_END: u32 = 0x0808_0000;
 
 struct AppSlot {
     base: u32,
     end: u32,
 }
 const SLOT_A: AppSlot = AppSlot {
-    base: 0x0801_0000,
-    end: 0x0808_0000,
+    base: APP_SPACE_BASE,
+    end: APP_SPACE_END,
 };
 
+/// Reads and returns the stack pointer and reset vector.
 fn read_vectors(app: &AppSlot) -> (u32, u32) {
     let sp = unsafe { (app.base as *const u32).read_volatile() };
     let rv = unsafe { (app.base as *const u32).add(1).read_volatile() };
     (sp, rv)
 }
 
-fn validate_app(app: &AppSlot) -> bool {
-    let (sp, rv) = read_vectors(app);
-    (rv > app.base && rv < app.end) && (rv & 0b1 > 0) && (sp > 0x2000_0000 && sp <= 0x2002_0000)
+/// Valid if stack pointer and reset vector are within expected range.
+/// If app slot contains garbage, this test will prevent the stm from jumping to it.
+fn validate_app(sp: u32, rv: u32, base: u32, end: u32) -> bool {
+    (rv > base && rv < end) && (rv & 0b1 > 0) && (sp > RAM_START && sp <= RAM_END)
 }
 
-// Makes the STM jump to the app.
-fn jump_to_app(app: &AppSlot) -> ! {
-    // Stack pointer and reset vector.
-    let (sp, rv) = read_vectors(app);
-
+/// Makes the STM jump to the app.
+fn jump_to_app(sp: u32, rv: u32, base: u32) -> ! {
     // Disable interrupts and counter. Then, write the application's vector table to the VTOR.
     unsafe {
         let mut cp = cortex_m::Peripherals::steal();
         cp.SYST.disable_counter();
         cp.SYST.disable_interrupt();
-        cp.SCB.vtor.write(app.base);
+        cp.SCB.vtor.write(base);
         bootstrap(sp as *const u32, rv as *const u32);
+    }
+}
+
+/// Validates app and jumps to app if valid. Only returns if app was invalid.
+fn validate_and_launch_app(app: &AppSlot) {
+    let (sp, rv) = read_vectors(app);
+    if validate_app(sp, rv, app.base, app.end) {
+        jump_to_app(sp, rv, app.base)
+    }
+}
+
+/// Uart loop that waits to receiva an application to write to memory.
+fn open_uart(tx: &mut Tx<pac::USART2, u8>, rx: &mut Rx<pac::USART2, u8>) -> ! {
+    loop {
+        if let Ok(byte) = rx.read() {
+            tx.bwrite_all(&[byte]).ok();
+        }
     }
 }
 
@@ -53,19 +78,34 @@ fn main() -> ! {
 
     let mut delay = cp.SYST.delay(&rcc.clocks);
 
-    // Blink LED twice to indicate that the program has started.
+    // Blink LED once to indicate that the program has started.
     led.toggle();
     delay.delay_ms(1000);
     led.toggle();
-    delay.delay_ms(1000);
 
     cortex_m::interrupt::disable();
 
-    // Get address to application
+    // Check if a valid application is present in default slot, if so, launch it.
+    validate_and_launch_app(&SLOT_A);
 
-    if validate_app(&SLOT_A) {
-        jump_to_app(&SLOT_A);
+    // No app is currently flashed on to board, open uart.
+    let tx = gpioa.pa2.into_alternate();
+    let rx = gpioa.pa3.into_alternate();
+    let config = SerialConfig::default().baudrate(BAUD_RATE.bps());
+    let serial = dp.USART2.serial::<u8>((tx, rx), config, &mut rcc).unwrap();
+    let (mut tx_half, mut rx_half) = serial.split();
+    open_uart(&mut tx_half, &mut rx_half);
+
+    // Program only reaches this loop if something went wrong, unique flash pattern to indicate error state. 2 fast blinks, then 1 second off.
+    loop {
+        led.toggle();
+        delay.delay_ms(100);
+        led.toggle();
+        delay.delay_ms(100);
+        led.toggle();
+        delay.delay_ms(100);
+        led.toggle();
+
+        delay.delay_ms(1000);
     }
-
-    loop {}
 }
