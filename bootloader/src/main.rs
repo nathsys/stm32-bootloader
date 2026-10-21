@@ -9,11 +9,14 @@ use stm32f4xx_hal::serial::config::Config as SerialConfig;
 use stm32f4xx_hal::serial::{Rx, Tx};
 use stm32f4xx_hal::{pac, prelude::*, rcc::Config};
 
+use crate::flash_map::AppSlot;
 use crate::frame::FrameParser;
 
 mod crc;
+mod flash_driver;
 mod flash_map;
 mod frame;
+mod update;
 
 const BAUD_RATE: u32 = 115200;
 
@@ -22,15 +25,6 @@ const RAM_END: u32 = 0x2002_0000;
 
 const ACK: u8 = 0x06;
 const NACK: u8 = 0x15;
-
-struct AppSlot {
-    base: u32,
-    end: u32,
-}
-const SLOT_A: AppSlot = AppSlot {
-    base: APP_SPACE_BASE,
-    end: APP_SPACE_END,
-};
 
 /// Reads and returns the stack pointer and reset vector.
 fn read_vectors(app: &AppSlot) -> (u32, u32) {
@@ -66,14 +60,22 @@ fn validate_and_launch_app(app: &AppSlot) {
 }
 
 /// Uart loop that waits to receive frames from host.
-fn uart_rc_frames(tx: &mut Tx<pac::USART2, u8>, rx: &mut Rx<pac::USART2, u8>) -> ! {
+fn uart_rc_frames(
+    tx: &mut Tx<pac::USART2, u8>,
+    rx: &mut Rx<pac::USART2, u8>,
+    flash: &mut pac::FLASH,
+    updater: &mut update::Updater,
+) -> ! {
     let mut frame_parser = FrameParser::new();
     loop {
         if let Ok(byte) = rx.read() {
             match frame_parser.feed(byte) {
                 FeedResult::Frame(_) => {
-                    // Frame was OK.
-                    tx.bwrite_all(&[ACK]).ok();
+                    if updater.handle(flash, frame_parser.payload()) {
+                        tx.bwrite_all(&[ACK]).ok();
+                    } else {
+                        tx.bwrite_all(&[NACK]).ok();
+                    }
                 }
                 FeedResult::BadLength | FeedResult::BadCrc => {
                     // Something went wrong.
@@ -95,6 +97,9 @@ fn main() -> ! {
     let gpioa = dp.GPIOA.split(&mut rcc);
     let mut led = gpioa.pa5.into_push_pull_output();
 
+    let gpioc = dp.GPIOC.split(&mut rcc);
+    let button = gpioc.pc13.into_pull_up_input();
+
     let mut delay = cp.SYST.delay(&rcc.clocks);
 
     // Blink LED once to indicate that the program has started.
@@ -104,8 +109,15 @@ fn main() -> ! {
 
     cortex_m::interrupt::disable();
 
-    // Check if a valid application is present in default slot, if so, launch it.
-    validate_and_launch_app(&SLOT_A);
+    // If button is not pressed, try to launch application. Otherwise, enter update mode.
+    if button.is_high() {
+        // Not pressed: try to boot
+        for i in 0..flash_map::SLOT_COUNT {
+            if let Some(slot) = flash_map::slot(i) {
+                validate_and_launch_app(&slot); // returns only if the slot is invalid
+            }
+        }
+    }
 
     // No app is currently flashed on to board, open uart.
     let tx = gpioa.pa2.into_alternate();
@@ -114,5 +126,9 @@ fn main() -> ! {
     let serial = dp.USART2.serial::<u8>((tx, rx), config, &mut rcc).unwrap();
     let (mut tx_half, mut rx_half) = serial.split();
     led.toggle();
-    uart_rc_frames(&mut tx_half, &mut rx_half);
+
+    let mut flash = dp.FLASH;
+    let mut updater = update::Updater::new();
+
+    uart_rc_frames(&mut tx_half, &mut rx_half, &mut flash, &mut updater);
 }

@@ -93,7 +93,7 @@ impl FrameParser {
                     let crc_result = crc::crc32(&self.buf[0..2 + self.len]);
                     let host_crc = u32::from_le_bytes(self.crc_bytes);
 
-                    let mut lencp = self.len;
+                    let lencp = self.len;
                     self.reset();
                     match crc_result ^ host_crc {
                         0 => {

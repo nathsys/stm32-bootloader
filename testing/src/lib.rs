@@ -12,6 +12,7 @@ pub mod flash_map;
 mod tests {
     use super::crc::crc32;
     use super::flash_map::sector_of;
+    use super::flash_map::sectors_for;
     use super::frame::{FeedResult, FrameParser, START_BYTE};
 
     //  helpers
@@ -170,5 +171,23 @@ mod tests {
         let last = base + 20 * 1024 - 1;
         assert_eq!(sector_of(base), Some(4));
         assert_eq!(sector_of(last), Some(4));
+    }
+
+    #[test]
+    fn sectors_for_ranges() {
+        assert_eq!(sectors_for(0x0801_0000, 20 * 1024), Some((4, 4)));
+        assert_eq!(sectors_for(0x0801_0000, 64 * 1024), Some((4, 4))); // fits exactly
+        assert_eq!(sectors_for(0x0801_0000, 64 * 1024 + 1), Some((4, 5))); // one byte over
+        assert_eq!(sectors_for(0x0801_0000, 448 * 1024), Some((4, 7))); // the whole area
+        assert_eq!(sectors_for(0x0801_0000, 448 * 1024 + 1), None); // past the end
+        assert_eq!(sectors_for(0x0807_FFFF, 1), Some((7, 7))); // last byte of flash
+        assert_eq!(sectors_for(0x0807_FFFF, 2), None);
+    }
+
+    #[test]
+    fn sectors_for_rejects_bad_input() {
+        assert_eq!(sectors_for(0x0800_FFFF, 2), None); // starts in the bootloader's area
+        assert_eq!(sectors_for(0x0801_0000, 0), None); // empty
+        assert_eq!(sectors_for(0x0801_0000, u32::MAX), None); // would overflow
     }
 }

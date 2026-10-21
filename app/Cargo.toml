@@ -9,6 +9,11 @@ cortex-m-rt = "0.7.7"
 panic-halt = "1.0.0"
 stm32f4xx-hal = { version = "0.23.0", features = ["stm32f411"] }
 
+[[bin]]
+name = "app"
+test = false
+bench = false
+
 [profile.release]
 debug = true
 lto = true
