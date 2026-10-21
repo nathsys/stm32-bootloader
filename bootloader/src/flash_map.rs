@@ -1,3 +1,10 @@
+/// Start of the chip's flash memory.
+pub const FLASH_BASE: u32 = 0x0800_0000;
+
+/// RAM is 128 KB. A valid initial stack pointer lies in RAM_START..=RAM_END.
+pub const RAM_START: u32 = 0x2000_0000;
+pub const RAM_END: u32 = 0x2002_0000;
+
 pub const FIRST_APP_SECTOR: u8 = 4;
 pub const LAST_APP_SECTOR: u8 = 7;
 
@@ -8,7 +15,7 @@ const SECTORS: [(u32, u32); 4] = [
     (APP_SPACE_BASE, 0x0802_0000),
     (0x0802_0000, 0x0804_0000),
     (0x0804_0000, 0x0806_0000),
-    (0x0806_0000, 0x0808_0000),
+    (0x0806_0000, APP_SPACE_END),
 ];
 
 pub struct AppSlot {
@@ -38,5 +45,5 @@ pub fn sectors_for(addr: u32, len: u32) -> Option<(u8, u8)> {
     let end = addr.checked_add(len - 1)?;
     let first = sector_of(addr)?;
     let last = sector_of(end)?;
-    return Some((first, last));
+    Some((first, last))
 }

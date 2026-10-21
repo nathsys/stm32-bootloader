@@ -1,0 +1,3 @@
+# Host-side unit tests: override the repo-wide thumbv7em target from ../.cargo/config.toml.
+[build]
+target = "host-tuple"

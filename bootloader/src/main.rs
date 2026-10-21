@@ -9,7 +9,7 @@ use stm32f4xx_hal::serial::config::Config as SerialConfig;
 use stm32f4xx_hal::serial::{Rx, Tx};
 use stm32f4xx_hal::{pac, prelude::*, rcc::Config};
 
-use crate::flash_map::AppSlot;
+use crate::flash_map::{AppSlot, RAM_END, RAM_START};
 use crate::frame::FrameParser;
 
 mod crc;
@@ -19,9 +19,6 @@ mod frame;
 mod update;
 
 const BAUD_RATE: u32 = 115200;
-
-const RAM_START: u32 = 0x2000_0000;
-const RAM_END: u32 = 0x2002_0000;
 
 const ACK: u8 = 0x06;
 const NACK: u8 = 0x15;

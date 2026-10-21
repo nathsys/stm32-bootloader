@@ -1,10 +1,7 @@
 use stm32f4xx_hal::flash::FlashExt;
 use stm32f4xx_hal::pac;
 
-use crate::flash_map::sector_of;
-use crate::flash_map::{FIRST_APP_SECTOR, LAST_APP_SECTOR};
-
-pub const FLASH_BASE: u32 = 0x0800_0000;
+use crate::flash_map::{FIRST_APP_SECTOR, FLASH_BASE, LAST_APP_SECTOR, sector_of};
 
 pub enum FlashError {
     OutOfRange,
@@ -18,11 +15,11 @@ pub fn erase_sector(flash: &mut pac::FLASH, sector: u8) -> Result<(), FlashError
     }
     let mut unl = FlashExt::unlocked(flash);
     unl.erase(sector).map_err(|_| FlashError::Hardware)?;
-    return Ok(());
+    Ok(())
 }
 
 pub fn write(flash: &mut pac::FLASH, addr: u32, data: &[u8]) -> Result<(), FlashError> {
-    if data.len() == 0 {
+    if data.is_empty() {
         return Ok(());
     }
     let addr_end = addr
@@ -34,14 +31,14 @@ pub fn write(flash: &mut pac::FLASH, addr: u32, data: &[u8]) -> Result<(), Flash
     let offset = (addr - FLASH_BASE) as usize;
     {
         let mut unl = FlashExt::unlocked(flash);
-        unl.program(offset as usize, data.iter())
+        unl.program(offset, data.iter())
             .map_err(|_| FlashError::Hardware)?;
     }
     let stored: &[u8] = &flash.read()[offset..offset + data.len()];
     if stored != data {
         return Err(FlashError::Verify);
     }
-    return Ok(());
+    Ok(())
 }
 
 pub fn read(flash: &pac::FLASH, addr: u32, len: usize) -> Option<&[u8]> {

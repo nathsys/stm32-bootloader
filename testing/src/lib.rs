@@ -11,8 +11,7 @@ pub mod flash_map;
 #[cfg(test)]
 mod tests {
     use super::crc::crc32;
-    use super::flash_map::sector_of;
-    use super::flash_map::sectors_for;
+    use super::flash_map::{SLOT_COUNT, sector_of, sectors_for, slot};
     use super::frame::{FeedResult, FrameParser, START_BYTE};
 
     //  helpers
@@ -166,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn twenty_kb_app_spans_two_sectors() {
+    fn twenty_kb_app_fits_in_one_sector() {
         let base = 0x0801_0000u32;
         let last = base + 20 * 1024 - 1;
         assert_eq!(sector_of(base), Some(4));
@@ -189,5 +188,52 @@ mod tests {
         assert_eq!(sectors_for(0x0800_FFFF, 2), None); // starts in the bootloader's area
         assert_eq!(sectors_for(0x0801_0000, 0), None); // empty
         assert_eq!(sectors_for(0x0801_0000, u32::MAX), None); // would overflow
+    }
+
+    // App slots
+
+    #[test]
+    fn slot_table() {
+        let expected = [
+            (0x0801_0000, 0x0802_0000), // 64 KB
+            (0x0802_0000, 0x0804_0000), // 128 KB
+            (0x0804_0000, 0x0806_0000),
+            (0x0806_0000, 0x0808_0000),
+        ];
+        assert_eq!(SLOT_COUNT, expected.len());
+        for (i, &(base, end)) in expected.iter().enumerate() {
+            let s = slot(i).unwrap();
+            assert_eq!((s.base, s.end), (base, end), "slot {i}");
+        }
+    }
+
+    #[test]
+    fn slot_index_out_of_range_is_none() {
+        assert!(slot(SLOT_COUNT).is_none());
+        assert!(slot(usize::MAX).is_none());
+    }
+
+    #[test]
+    fn each_slot_is_exactly_one_sector() {
+        for i in 0..SLOT_COUNT {
+            let s = slot(i).unwrap();
+            let sector = 4 + i as u8;
+            assert_eq!(
+                sectors_for(s.base, s.end - s.base),
+                Some((sector, sector)),
+                "slot {i}"
+            );
+            // One byte more spills into the next sector, or past the end of flash for the last slot.
+            let next = if i + 1 < SLOT_COUNT {
+                Some((sector, sector + 1))
+            } else {
+                None
+            };
+            assert_eq!(
+                sectors_for(s.base, s.end - s.base + 1),
+                next,
+                "slot {i} + 1 byte"
+            );
+        }
     }
 }

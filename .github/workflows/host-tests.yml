@@ -1,0 +1,16 @@
+name: Host tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run host tests
+        working-directory: testing
+        run: |
+          cargo test --target "$(rustc -vV | sed -n 's/^host: //p')"

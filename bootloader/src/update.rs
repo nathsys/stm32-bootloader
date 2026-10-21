@@ -1,10 +1,8 @@
-use stm32f4xx_hal::flash::FlashExt;
 use stm32f4xx_hal::pac;
 
 use crate::crc::crc32;
 use crate::flash_driver;
-use crate::flash_map;
-use crate::flash_map::{APP_SPACE_BASE, sectors_for};
+use crate::flash_map::{self, sectors_for};
 
 const CMD_BEGIN: u8 = 0x01;
 const CMD_DATA: u8 = 0x02;

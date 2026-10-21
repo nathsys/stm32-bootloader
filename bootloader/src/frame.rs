@@ -1,4 +1,4 @@
-use crate::crc::{self, crc32};
+use crate::crc::crc32;
 
 pub const START_BYTE: u8 = 0xA5;
 pub const MAX_PAYLOAD: usize = 256;
@@ -29,6 +29,12 @@ pub struct FrameParser {
     crc_bytes: [u8; 4],
 }
 
+impl Default for FrameParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FrameParser {
     pub fn new() -> Self {
         Self {
@@ -57,7 +63,7 @@ impl FrameParser {
     pub fn feed(&mut self, byte: u8) -> FeedResult {
         match self.state {
             State::WaitStart => {
-                if byte == 0xA5 {
+                if byte == START_BYTE {
                     self.state = State::LenLow;
                 }
                 FeedResult::Pending
@@ -90,7 +96,7 @@ impl FrameParser {
                 self.crc_pos += 1;
                 if self.crc_pos == 4 {
                     // Validate payload.
-                    let crc_result = crc::crc32(&self.buf[0..2 + self.len]);
+                    let crc_result = crc32(&self.buf[0..2 + self.len]);
                     let host_crc = u32::from_le_bytes(self.crc_bytes);
 
                     let lencp = self.len;
