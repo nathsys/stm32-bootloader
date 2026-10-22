@@ -1,5 +1,7 @@
 # STM32 UART bootloader (Rust)
 
+[![Host tests](https://github.com/nathsys/stm32-bootloader/actions/workflows/host-tests.yml/badge.svg)](https://github.com/nathsys/stm32-bootloader/actions/workflows/host-tests.yml)
+
 A small bootloader for the NUCLEO-F411RE (STM32F411RE), written in `no_std` Rust. It validates and launches an application from flash, and accepts new application images over UART with CRC-checked frames.
 
 ## Layout
