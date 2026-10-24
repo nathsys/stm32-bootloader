@@ -58,3 +58,5 @@ Host-side tests need no board:
 cd testing
 cargo test --target "$(rustc -vV | sed -n 's/^host: //p')"
 ```
+
+Made by Nathanael Mohanu
